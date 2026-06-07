@@ -1,0 +1,248 @@
+version: '3.8'
+
+networks:
+  kafka-net:
+    driver: bridge
+
+services:
+  # =========================================================================
+  # [LAB 5] HẠ TẦNG KAFKA KRAFT CLUSTER (3 NODES) & MANAGEMENT
+  # =========================================================================
+  kafka1:
+    image: confluentinc/cp-kafka:7.8.0
+    hostname: kafka1
+    container_name: kafka1
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      CLUSTER_ID: '4L62C72TSRCD_YZpS6eN_g'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka1:9093,2@kafka2:9093,3@kafka3:9093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,SASL_PLAINTEXT://0.0.0.0:9096,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka1:9092,SASL_PLAINTEXT://kafka1:9096'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'SASL_PLAINTEXT'
+      KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: 'SCRAM-SHA-512'
+      KAFKA_LISTENER_NAME_SASL_PLAINTEXT_SASL_ENABLED_MECHANISMS: 'SCRAM-SHA-512'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 5368709120
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_CLEANER_ENABLE: 'true'
+      KAFKA_LOG_CLEANUP_POLICY: 'delete'
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_BROKER_RACK: az-a
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-512
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf -Djavax.security.auth.useSubjectCredsOnly=false"
+      KAFKA_AUTHORIZER_CLASS_NAME: 'org.apache.kafka.metadata.authorizer.StandardAuthorizer'
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: 'true'
+      KAFKA_SUPER_USERS: 'User:ANONYMOUS;User:debezium_admin' # Đã bổ sung user admin cho connect ứng dụng
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./data/kafka1:/var/lib/kafka/data
+      - ./security/kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+    networks:
+      - kafka-net
+
+  kafka2:
+    image: confluentinc/cp-kafka:7.8.0
+    hostname: kafka2
+    container_name: kafka2
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      CLUSTER_ID: '4L62C72TSRCD_YZpS6eN_g'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka1:9093,2@kafka2:9093,3@kafka3:9093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9094,SASL_PLAINTEXT://0.0.0.0:9096,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka2:9094,SASL_PLAINTEXT://kafka2:9096'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'SASL_PLAINTEXT'
+      KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: 'SCRAM-SHA-512'
+      KAFKA_LISTENER_NAME_SASL_PLAINTEXT_SASL_ENABLED_MECHANISMS: 'SCRAM-SHA-512'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 5368709120
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_CLEANER_ENABLE: 'true'
+      KAFKA_LOG_CLEANUP_POLICY: 'delete'
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_BROKER_RACK: az-b
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-512
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf -Djavax.security.auth.useSubjectCredsOnly=false"
+      KAFKA_AUTHORIZER_CLASS_NAME: 'org.apache.kafka.metadata.authorizer.StandardAuthorizer'
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: 'true'
+      KAFKA_SUPER_USERS: 'User:ANONYMOUS;User:debezium_admin'
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9094 && exec 3<&- && exec 3>&- || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./data/kafka2:/var/lib/kafka/data
+      - ./security/kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+    networks:
+      - kafka-net
+
+  kafka3:
+    image: confluentinc/cp-kafka:7.8.0
+    hostname: kafka3
+    container_name: kafka3
+    ports:
+      - "9095:9095"
+    environment:
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      CLUSTER_ID: '4L62C72TSRCD_YZpS6eN_g'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka1:9093,2@kafka2:9093,3@kafka3:9093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9095,SASL_PLAINTEXT://0.0.0.0:9096,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka3:9095,SASL_PLAINTEXT://kafka3:9096'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'SASL_PLAINTEXT'
+      KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: 'SCRAM-SHA-512'
+      KAFKA_LISTENER_NAME_SASL_PLAINTEXT_SASL_ENABLED_MECHANISMS: 'SCRAM-SHA-512'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 5368709120
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_CLEANER_ENABLE: 'true'
+      KAFKA_LOG_CLEANUP_POLICY: 'delete'
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_BROKER_RACK: az-c
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-512
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf -Djavax.security.auth.useSubjectCredsOnly=false"
+      KAFKA_AUTHORIZER_CLASS_NAME: 'org.apache.kafka.metadata.authorizer.StandardAuthorizer'
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: 'true'
+      KAFKA_SUPER_USERS: 'User:ANONYMOUS;User:debezium_admin'
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9095"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./data/kafka3:/var/lib/kafka/data
+      - ./security/kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+    networks:
+      - kafka-net
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    restart: always
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=KRaft-Cluster-Nhom16
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka1:9092,kafka2:9094,kafka3:9095
+      - AUTH_TYPE=DISABLED
+      - DYNAMIC_CONFIG_ENABLED=true
+      - KAFKA_CLUSTERS_0_DEFAULTKEYSERDE=String
+      - KAFKA_CLUSTERS_0_DEFAULTVALUESERDE=String
+      - KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME=debezium-connect
+      - KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS=http://connect:8083
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+    networks:
+      - kafka-net
+
+  # =========================================================================
+  # [LAB 6] HỆ SINH THÁI CDC - DATA INTEGRATION (ĐÃ ĐỒNG BỘ MẠNG & BẢO MẬT)
+  # =========================================================================
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sourcedb
+      MYSQL_USER: debezium
+      MYSQL_PASSWORD: dbz
+    volumes:
+      - ./init-scripts/a_mysql_init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --server-id=1 --log-bin=mysql-bin --binlog-format=ROW --binlog-row-image=FULL
+    networks:
+      - kafka-net
+
+  postgresql:
+    image: postgres:15
+    container_name: postgresql
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespass
+      POSTGRES_DB: targetdb
+    volumes:
+      - ./init-scripts/b_postgres_init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - kafka-net
+
+  connect:
+    build: .
+    container_name: kafka-connect
+    ports:
+      - "8084:8083"
+    environment:
+      # 1. Trỏ kết nối vào mạng nội bộ của cụm 3 Node thay vì node đơn lẻ
+      BOOTSTRAP_SERVERS: kafka1:9096,kafka2:9096,kafka3:9096
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+
+      # 2. BẮT BUỘC: Cấu hình SASL_PLAINTEXT Client để Kafka Connect vượt qua vòng bảo mật của Lab 5
+      CONNECT_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      CONNECT_SASL_MECHANISM: SCRAM-SHA-512
+      CONNECT_SASL_JAAS_CONFIG: "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"admin\" password=\"admin-password\";"
+
+      # Cấu hình bảo mật cho luồng Producer/Consumer nội bộ của Connect khi tạo Topic quản lý trạng thái
+      CONNECT_producer_security_protocol: SASL_PLAINTEXT
+      CONNECT_producer_sasl_mechanism: SCRAM-SHA-512
+      CONNECT_producer_sasl_jaas_config: "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"admin\" password=\"admin-password\";"
+      CONNECT_consumer_security_protocol: SASL_PLAINTEXT
+      CONNECT_consumer_sasl_mechanism: SCRAM-SHA-512
+      CONNECT_consumer_sasl_jaas_config: "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"admin\" password=\"admin-password\";"
+
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      mysql:
+        condition: service_started
+      postgresql:
+        condition: service_started
+    volumes:
+      # Chia sẻ chung file cấu hình JAAS của Lab 5 để đồng bộ thông tin tài khoản
+      - ./security/kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+    networks:
+      - kafka-net

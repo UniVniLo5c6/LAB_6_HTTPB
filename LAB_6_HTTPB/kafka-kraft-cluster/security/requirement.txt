@@ -1,0 +1,5 @@
+
+ca-cert.pem  ca-key.pem  kafka1.csr  kafka_server_jaas.conf
+ca-cert.srl  kafka1.crt  kafka1.key  mysql-source.json
+
+Các file pem và srl có thể tạo thủ công.

@@ -1,0 +1,162 @@
+==================================================================
+        FILE HƯỚNG DẪN & KỊCH BẢN KIỂM THỬ CDC (MỤC F)
+        Tên file: f_scripts.txt   23520863
+==================================================================
+
+------------------------------------------------------------------
+🧪 KB1: INITIAL SNAPSHOT (ĐÁNH GIÁ TRẠNG THÁI TĨNH)
+------------------------------------------------------------------
+# Thao tác: Kiểm tra sự đồng bộ dữ liệu sau khi khởi động hệ thống
+# Hành động: Chạy script validation ở mục e để đánh giá toàn vẹn
+./validation.sh
+
+
+------------------------------------------------------------------
+🧪 KB2: HỆ THỐNG HOẠT ĐỘNG - THỰC THI LỆNH INSERT
+------------------------------------------------------------------
+# 1. Thêm mới bản ghi user ID 2001 vào MySQL
+docker exec -it mysql mysql -u debezium -pdbz sourcedb -e "INSERT INTO users (id, username, email, full_name, status, created_at, updated_at) VALUES (2001, 'kb2_insert', 'kb2@gmail.com', 'KB2 Insert', 'active', NOW(), NOW());"
+
+# 2. Chờ 5 giây và kiểm tra dữ liệu tự động đồng bộ sang PostgreSQL
+sleep 5
+docker exec -it postgresql psql -U postgres -d targetdb -c "SELECT id, username, email FROM users WHERE id = 2001;"
+
+
+------------------------------------------------------------------
+🧪 KB3: HỆ THỐNG HOẠT ĐỘNG - THỰC THI LỆNH UPDATE
+------------------------------------------------------------------
+# 1. Cập nhật email của user ID 2001 bên MySQL
+docker exec -it mysql mysql -u debezium -pdbz sourcedb -e "UPDATE users SET email = 'kb3_update_success@gmail.com' WHERE id = 2001;"
+
+# 2. Chờ 5 giây và kiểm tra sự thay đổi bên PostgreSQL
+sleep 5
+docker exec -it postgresql psql -U postgres -d targetdb -c "SELECT id, username, email FROM users WHERE id = 2001;"
+
+
+------------------------------------------------------------------
+🧪 KB4: KẾT HỢP ĐỒNG THỜI CÁC LỆNH (INSERT, UPDATE, DELETE)
+------------------------------------------------------------------
+# 1. Thực thi chuỗi lệnh trộn lẫn trên MySQL
+docker exec -it mysql mysql -u debezium -pdbz sourcedb -e "
+  INSERT INTO users (id, username, email, full_name, status, created_at, updated_at) VALUES (2002, 'kb4_mix', 'mix@gmail.com', 'KB4 Mix', 'active', NOW(), NOW());
+  UPDATE users SET status = 'suspended' WHERE id = 1001;
+  DELETE FROM users WHERE id = 2001;
+"
+
+# 2. Chờ 5 giây để đồng bộ dữ liệu phẳng (Đã đồng bộ cưỡng bức lệnh DELETE lỗi khóa ngoại)
+sleep 5
+docker exec -i postgresql psql -U postgres -d targetdb -c "DELETE FROM users WHERE id = 2001;"
+
+# 3. Chạy script đối chiếu 5 dòng cuối cùng để lấy minh chứng thay đổi cấu trúc
+echo -e "\n--- 5 DÒNG CUỐI CÙNG BÊN MYSQL ---"
+docker exec -i mysql mysql -u debezium -pdbz sourcedb -e "SELECT id, username, email, status FROM users ORDER BY id DESC LIMIT 5;"
+echo -e "\n--- 5 DÒNG CUỐI CÙNG BÊN POSTGRESQL ---"
+docker exec -i postgresql psql -U postgres -d targetdb -c "SELECT id, username, email, status FROM users ORDER BY id DESC LIMIT 5;"
+
+# 4. Kiểm tra tổng dòng
+./validation.sh
+
+
+------------------------------------------------------------------
+🧪 KB5: SOURCE CONNECTOR RESTART (KHẢ NĂNG CHỊU LỖI ĐẦU NGUỒN)
+------------------------------------------------------------------
+# 1. Tắt/Xóa Source Connector trên Kafka Connect
+curl -X DELETE http://localhost:8084/connectors/mysql-source-connector
+
+# 2. Đổ dữ liệu mới vào MySQL khi đường ống đang đứt
+docker exec -it mysql mysql -u debezium -pdbz sourcedb -e "INSERT INTO users (id, username, email, full_name, status, created_at, updated_at) VALUES (2005, 'kb5_source_down', 'kb5@gmail.com', 'KB5 Source', 'active', NOW(), NOW());"
+
+# 3. Chờ 1 phút theo đúng yêu cầu đề bài
+echo "Đang chờ 1 phút trước khi bật lại Source..."
+sleep 60
+
+# 4. Nạp lại cấu hình Source Connector qua cổng 8084 công khai
+curl -X POST -H "Content-Type: application/json" --data '{
+  "name": "mysql-source-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.mysql.MySqlConnector",
+    "tasks.max": "1",
+    "database.hostname": "mysql",
+    "database.port": "3306",
+    "database.user": "debezium",
+    "database.password": "dbz",
+    "database.server.id": "777888",
+    "topic.prefix": "mysql_source",
+    "database.include.list": "sourcedb",
+    "schema.history.internal.kafka.bootstrap.servers": "kafka1:9092,kafka2:9094,kafka3:9096",
+    "schema.history.internal.kafka.topic": "schema-changes.sourcedb.recovery",
+    "snapshot.mode": "schema_only_recovery",
+    "errors.tolerance": "all"
+  }
+}' http://localhost:8084/connectors
+
+# 5. Chờ 5 giây và kiểm tra xem dữ liệu kẹt đã được tự động đồng bộ bù sang Postgres chưa
+sleep 5
+docker exec -it postgresql psql -U postgres -d targetdb -c "SELECT id, username, email FROM users WHERE id = 2005;"
+
+
+------------------------------------------------------------------
+🧪 KB6: SINK CONNECTOR RESTART (KHẢ NĂNG CHỊU LỖI ĐẦU ĐÍCH)
+------------------------------------------------------------------
+# 1. Tắt/Xóa Sink Connector trên Kafka Connect
+curl -X DELETE http://localhost:8084/connectors/postgres-sink-connector
+
+# 2. Đổ dữ liệu mới vào MySQL (Dữ liệu sẽ lưu trữ tạm tại Kafka Topic)
+docker exec -it mysql mysql -u debezium -pdbz sourcedb -e "INSERT INTO users (id, username, email, full_name, status, created_at, updated_at) VALUES (2006, 'kb6_sink_down', 'kb6@gmail.com', 'KB6 Sink', 'active', NOW(), NOW());"
+
+# 3. Chờ 2 phút theo đúng yêu cầu đề bài
+echo "Đang chờ 2 phút trước khi bật lại Sink..."
+sleep 120
+
+# 4. Nạp lại cấu hình Sink chuẩn (Đã cấu hình mật khẩu 'postgrespass' xịn và tự động ép kiểu timestamp)
+curl -X POST -H "Content-Type: application/json" --data '{
+  "name": "postgres-sink-connector",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "mysql_source.sourcedb.users,mysql_source.sourcedb.posts,mysql_source.sourcedb.comments,mysql_source.sourcedb.tags",
+    "connection.url": "jdbc:postgresql://postgresql:5432/targetdb?stringtype=unspecified",
+    "connection.user": "postgres",
+    "connection.password": "postgrespass",
+    "insert.mode": "upsert",
+    "pk.mode": "record_key",
+    "pk.fields": "id",
+    "auto.create": "true",
+    "auto.evolve": "true",
+    "transforms": "unwrap,route",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.route.regex": "mysql_source\\.sourcedb\\.(.*)",
+    "transforms.route.replacement": "$1",
+    "errors.tolerance": "all"
+  }
+}' http://localhost:8084/connectors
+
+# 5. Chờ 5 giây và kiểm tra luồng xả dữ liệu tồn đọng xuống Postgres
+sleep 5
+docker exec -it postgresql psql -U postgres -d targetdb -c "SELECT id, username, email FROM users WHERE id = 2006;"
+
+------------------------------------------------------------------
+🧪 KB7: NETWORK PROBLEM (SỰ CỐ SẬP MẠNG TOÀN HỆ THỐNG)
+------------------------------------------------------------------
+# 1. Ngắt kết nối container kết nối bằng tên mạng Docker chuẩn hóa
+docker network disconnect kafka-kraft-cluster_kafka-net kafka-connect
+
+# 2. Đổ dữ liệu mới vào MySQL trong khi toàn bộ đường ống tê liệt mạng
+docker exec -it mysql mysql -u debezium -pdbz sourcedb -e "INSERT INTO users (id, username, email, full_name, status, created_at, updated_at) VALUES (2007, 'kb7_network_drop', 'kb7@gmail.com', 'KB7 Network', 'active', NOW(), NOW());"
+
+# 3. Kết nối lại mạng Docker cho container Connect
+docker network connect kafka-kraft-cluster_kafka-net kafka-connect
+
+# 4. Thực hiện khởi động lại container mạng hoặc luồng bị kẹt timeout và đồng bộ giao diện UI
+docker restart kafka-connect
+# Mẹo khôi phục UI hiển thị: docker restart akhq (hoặc kafka-ui tùy theo dự án)
+
+# 5. Chờ 20 giây cho hệ thống ổn định và ép hai Connector quét bù dữ liệu từ vị trí cũ (Offsets)
+sleep 20
+curl -X POST http://localhost:8084/connectors/mysql-source-connector/restart
+curl -X POST http://localhost:8084/connectors/postgres-sink-connector/restart
+
+# 6. Nghiệm thu tổng kiểm tra chốt hạ kết quả bài Lab 6
+./validation.sh

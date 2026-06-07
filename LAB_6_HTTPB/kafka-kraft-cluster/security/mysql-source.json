@@ -1,0 +1,25 @@
+{
+  "name": "mysql-source-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.mysql.MySqlConnector",
+    "database.hostname": "mysql",
+    "database.port": "3306",
+    "database.user": "debezium",
+    "database.password": "dbz",
+    "database.server.id": "1",
+    "topic.prefix": "mysql_source",
+    "table.include.list": "sourcedb.users,sourcedb.posts,sourcedb.comments,sourcedb.tags",
+    "schema.history.internal.kafka.bootstrap.servers": "kafka:29092",
+    "schema.history.internal.kafka.topic": "schema-changes.mysql",
+    "snapshot.mode": "initial",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+
+    "schema.history.internal.consumer.security.protocol": "SASL_PLAINTEXT",
+    "schema.history.internal.consumer.sasl.mechanism": "SCRAM-SHA-512",
+    "schema.history.internal.consumer.sasl.jaas.config": "org.apache.kafka.common.security.scram.ScramLoginModule required username='admin' password='admin-password' ;",
+    "schema.history.internal.producer.security.protocol": "SASL_PLAINTEXT",
+    "schema.history.internal.producer.sasl.mechanism": "SCRAM-SHA-512",
+    "schema.history.internal.producer.sasl.jaas.config": "org.apache.kafka.common.security.scram.ScramLoginModule required username='admin' password='admin-password';"
+  }
+}
